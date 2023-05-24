@@ -3,13 +3,11 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import router from "./router";
 import cors from "cors";
-import http from "http";
 
 
 dotenv.config();
 
 const app: Express = express();
-const server: http.Server = http.createServer(app);
 const port = process.env.PORT;
 const jsonBodyMiddleware = express.json();
 
@@ -23,7 +21,7 @@ async function startApp(){
             .then(() => console.log('⚡️ Connected to database!!!'))
             .catch(err => console.error('Error connecting to database', err));
             
-        server.listen(port, () => {
+        app.listen(port, () => {
             console.log(`⚡️[server]: Server is running at http://localhost:${port}`);
         })
     } catch (e) {

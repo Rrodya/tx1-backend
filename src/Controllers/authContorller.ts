@@ -29,26 +29,10 @@ class authController {
         return res.status(400).json({message: "Registration error validation", errors})
       }
 
-      const { phone, password, name, role, car } = req.body;
-    
-
-      if(!Object.keys(RolesEnum).includes(role)) {
-        return res.status(404).json({message: "error with choosing role"})
-      }
-
+      const { phone, password, name } = req.body;
       const candidate = await User.findOne({phone});
 
       if(candidate) {
-        const existingRoles = candidate.roles || [];
-        const newRoles = [RolesEnum.PASSENGER, RolesEnum.DRIVER];
-        
-        const rolesToAdd = newRoles.filter(role => !existingRoles.includes(role));
-        if(rolesToAdd.length < 2 && RolesEnum[rolesToAdd[0]] === RolesEnum[role as keyof typeof RolesEnum]) {
-          await User.updateOne({_id: candidate._id}, {$addToSet: { roles: rolesToAdd}})
-          const user = await User.findById(candidate._id);
-          return res.status(200).json(user)
-        }
-
         return res.status(400).json(
           {
             message: "User with this number already exist",
@@ -58,13 +42,11 @@ class authController {
       }
 
       const hashPassword = bcryptjs.hashSync(password, 7);
-      const userRole = await Role.findOne({ value: RolesEnum[role as keyof typeof RolesEnum]})
-
+      const userRole = await Role.findOne({value: "USER"});
       if(!userRole) {
-        return res.status(404).json({message: "can't find this role"}) ;
+        return res.status(400).json({message: "User Role not found", error: "wrong login"})
       }
-
-      const user = new User({phone, name, password: hashPassword, car: car, roles: [userRole.value]})
+      const user = await new User({phone, name, password: hashPassword, roles: [userRole.value]})
       await user.save();
       return res.json(user)
 
@@ -77,19 +59,12 @@ class authController {
 
   async login(req: Request, res: Response) {
     try {
-      const { phone, password, roles } = req.body;
-      
+      const { phone, password } = req.body;
+
       const user = await User.findOne({phone});
+     
       if(!user) {
         return res.status(400).json({message: "wrong login"})
-      }
-      const userRoles: string[] = user.roles;
-      const role = roles[0];
-
-      console.log(role);
-      console.log(userRoles);
-      if(!userRoles.includes(role)) {
-        return res.status(200).json({message: "incorrect role"});
       }
 
       const validPassord = bcryptjs.compareSync(password, user.password);
@@ -117,10 +92,12 @@ class authController {
 
   async createAdmin(req: Request, res: Response) {
     try {
-      const { phone, password} = req.body;
+      const { phone, password, name} = req.body;
       const hashPassword = bcryptjs.hashSync(password, 7);
-      const user = new User({phone, password: hashPassword, roles: [RolesEnum.ADMIN]})
-      user.save();
+      const user = new User({phone, name, password: hashPassword, roles: [RolesEnum.ADMIN]})
+      await user.save();
+      
+      console.log(user);
       res.json(user);
     } catch (error) {
       console.log(error);
@@ -131,11 +108,9 @@ class authController {
   async createRole(req: Request, res: Response) {
     try {
       const userRole = new Role();
-      const driverRole = new Role({value: RolesEnum.DRIVER});
       const adminRole = new Role({value: RolesEnum.ADMIN});
 
       await userRole.save();
-      await driverRole.save();
       await adminRole.save();
 
       return res.json("success");
@@ -178,9 +153,7 @@ class authController {
 
       return res.json({
         name: user.name,
-        phone: user.phone,
-        car: user.car,
-        drives: user.drives
+        phone: user.phone
       });
     } catch(e) {
       console.log(e);

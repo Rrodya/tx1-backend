@@ -1,15 +1,19 @@
-import mongoose from "mongoose";
+import mongoose, { Document } from "mongoose";
+import mongoosePaginate from "mongoose-paginate-v2"
 
 export const DriveSchema = new mongoose.Schema({
-  driver_id: { type: mongoose.Schema.Types.ObjectId, ref: "User"},
-  passenger_id: { type: mongoose.Schema.Types.ObjectId, ref: "User"},
-  from_address: { type: String, default: null }, 
-  to_address: { type: String, default: null }, 
+  passengers_id: [{ type: mongoose.Schema.Types.ObjectId, ref: "User"}],
+  author_id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  name: { type: String, required: true },
+  phone: { type: String, required: true },
+  seats: { type: Number, default: 1 },
+  from: { type: String, default: null }, 
+  to: { type: String, default: null }, 
   status: { type: Number, default: 0 }, 
-  date_start: { type: Date, default: null },
-  date_end: { type: Date, default: null },
+  date_start: { type: Number, default: null },
   price: { type: Number, default: null },
-  distance: { type: Number, default: null },
+  description: { type: String, default: null },
+  created_at: { type: Date, default: Date.now },
 });
 
 export default mongoose.model("Drive", DriveSchema);
