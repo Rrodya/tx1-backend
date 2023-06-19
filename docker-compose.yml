@@ -9,7 +9,7 @@ services:
     ports:
       - 27017:27017
     volumes: # optional to preserve database after container is deleted.
-      - ./database-data:/data/db
+      - ./database-data:/data/db  
   
   # Mongo Express Service
   # mongo-express:

@@ -8,3 +8,8 @@ export enum RolesEnum {
 export enum PaginationEnum {
   PAGE_SIZE=10,
 }
+
+export enum DriveStatus {
+  "CREATED"=0,
+  "ENDED"=1
+}

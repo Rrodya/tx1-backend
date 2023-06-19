@@ -26,7 +26,8 @@
     "jsonwebtoken": "^9.0.0",
     "mongoose": "^7.0.3",
     "mongoose-paginate-v2": "^1.7.1",
-    "socket.io": "^4.6.1"
+    "socket.io": "^4.6.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.2",

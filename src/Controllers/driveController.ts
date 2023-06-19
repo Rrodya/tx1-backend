@@ -1,16 +1,76 @@
 import { Request, Response } from "express";
 import Drive from "../Models/Drive";
 import User from "../Models/User";
-import { PaginationEnum } from "../enums";
+import Book from "../Models/Book";
+import { DriveStatus, PaginationEnum, RolesEnum } from "../enums";
 import getIdFromToken from "../Helpers/getIdFromToken";
 
 class driveController {
   async getOne(req: Request, res: Response  ) {
     try {
       const { id } = req.params;
-      const drive = await Drive.findById(id);
+      if(!req.headers.authorization) {
+        return res.status(403).json({ message: "Unauthorized"});
+      }
+      const drive = await Drive.findById(id);      
+      const userId = getIdFromToken(req.headers.authorization);
+      const user = await User.findById(userId);
 
-      return res.json(drive);
+      if(!user) {
+        return res.status(403).json({ message: "User not found"});
+      }
+
+      if(!drive) {
+        return res.status(403).json({ message: "Drive not found"});
+      }
+
+      const currentDate = new Date
+      // currentDate.setHours(currentDate.getHours() - 1);
+      const currentDateTime = currentDate.getTime();
+      console.log(currentDateTime);
+      console.log(drive.date_start);
+      if(currentDateTime > drive.date_start) {
+
+        drive.status = DriveStatus.ENDED;
+      }
+
+      const driveInfo:any = {isOwning: false};
+
+      driveInfo.isOwning = drive.author_id?.toString() === userId;
+      
+      if(!driveInfo.isOwning) {
+        driveInfo.isBook = drive.passengers_id.includes(userId);
+      }
+
+      let books: any = []
+
+
+      if(userId != drive.author_id) {
+        
+        driveInfo.aboutUser = {
+          id: user._id,
+          name: user.name,
+          phone: user.phone
+        };
+
+        if(driveInfo.isBook){
+          const book = await Book.findOne({author_id: userId, drive_id: drive._id});
+          if(!book) {
+            return res.json({message: "Book not found"});
+          }
+
+          driveInfo.aboutUser.description = book.description;
+          driveInfo.aboutUser.seats = book.seats;
+          driveInfo.aboutUser._id = book._id;
+        }
+      } else {
+        console.log("books");
+        let bookUser = await Drive.findById(id).populate("book_id");
+
+        books = bookUser?.book_id;
+      }
+
+      return res.json({drive: drive, ...driveInfo, books: books});
     } catch (error) {
       console.log(error);
       return res.json({message: "error"})
@@ -19,21 +79,29 @@ class driveController {
 
   async getAll(req: Request, res: Response  ) {
     try {
-      const { page, driverId } = req.body;
-      
+      const { page, driverId, from, to } = req.query;
+      console.log(page);      
       if(!req.headers.authorization) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
       const userId = getIdFromToken(req.headers.authorization);
       const user = await User.findById(userId);
-      const itemToSkip = (page - 1) * PaginationEnum.PAGE_SIZE;
+      const itemToSkip = (Number(page) - 1) * PaginationEnum.PAGE_SIZE;
       let drives;
+      const currentDateTime = new Date().getTime();
+      console.log(currentDateTime);
+    
       if(!driverId) {
-        // drives = await Drive.find({$expr: { $lt: [ {$size: "$passengers_id"}, "$seats"]}}).skip(itemToSkip).limit(PaginationEnum.PAGE_SIZE);
-        drives = await Drive.find().skip(itemToSkip).limit(PaginationEnum.PAGE_SIZE);
+        if(from && to) {
+          drives = await Drive.find({status: 0, date_start: { $gt: currentDateTime}, from: from, to: to}).sort({created_at: -1}).skip(itemToSkip).limit(PaginationEnum.PAGE_SIZE);
+        } else {
+          drives = await Drive.find({status: 0, date_start: { $gt: currentDateTime}}).sort({created_at: -1}).skip(itemToSkip).limit(PaginationEnum.PAGE_SIZE);
+        }
+        // console.log("drives");
+        // console.log(drives);
       } else {
-        drives = await Drive.find({ author_id: driverId }).skip(itemToSkip).limit(PaginationEnum.PAGE_SIZE);
+        drives = await Drive.find({ author_id: driverId }).sort({created_at: -1}).skip(itemToSkip).limit(PaginationEnum.PAGE_SIZE);
       }
 
       let returnDrives = drives.map(drive => {
@@ -45,9 +113,8 @@ class driveController {
 
       returnDrives = returnDrives.filter(drive => drive);
 
-      console.log(returnDrives);
-
       return res.json({ drives: returnDrives, userId: userId });
+
     } catch (error) {    
       console.log(error);
       return res.json({message: "error"})
@@ -92,6 +159,7 @@ class driveController {
       const user = await User.findById(userId);
       const drive = await Drive.findById(id);
       
+      
       if(!user) {
         return res.status(404).json({message: "User not found"});
       }
@@ -120,13 +188,18 @@ class driveController {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const driverId = getIdFromToken(req.headers.authorization);
+      const user = await User.findById(driverId);
       const drive = await Drive.findById(id);
 
       if(!drive) {
         return res.status(400).json({ message: "Driver not found" });
       }
 
-      if(drive.author_id?.toString() !== driverId) {
+      if(!user) {
+        return res.status(400).json({ message: "User not found" });
+      }
+
+      if(drive.author_id?.toString() !== driverId && user.roles.includes(RolesEnum.USER)) {
         return res.json({message: "Invalid driver id" });
       }
 
@@ -188,26 +261,36 @@ class driveController {
       if(drive.seats <= drive.passengers_id.length) {
         return res.status(401).json({ message: "Seats limit exceeded" });
       }
+      
+      data.author_id = user._id;
+      data.drive_id = drive.id;
+      console.log('book data');
+      console.log(data);
+      const book = await new Book(data);
+      await book.save();
 
-      const passenger = {
-        _id: user._id,
-        seats: data.seats,
-        description: data.description,
-        phone: data.phone 
-      }
+      await user.booked_drives.push(drive._id);
+      await user.save();
 
-      user.booked_drives.push(drive._id);
-      user.save();
+      await drive.passengers_id.push(user._id);
+      await drive.save();
 
-      drive.passengers.push(passenger);
-      drive.save();
-
-      drive.passengers_id.push(user._id);
-      drive.save();
+      await drive.book_id.push(book._id);
+      await drive.save();
 
       console.log(drive);
+
+
+      const bookIds = drive.book_id.map((id: any)=> id)
+      console.log(bookIds);
+      const drivesBook = await Book.find({_id: {$in: bookIds}})
+      console.log(drivesBook);
+      const seats = drivesBook.reduce((acc, book) => acc + book.seats, 0);
+      console.log(seats);
+      drive.booked_seats = seats;
+      await drive.save();
       
-      return res.json({message: "booked", });
+      return res.json({message: "booked"});
     } catch (error) {
       console.log(error);
       return res.json({message: "error"})
@@ -217,15 +300,54 @@ class driveController {
   async cancelToBook(req: Request, res: Response  ) {
     try {
       const { id } = req.params;
+      const { passenger_id } = req.body;
 
       if(!req.headers.authorization) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const userId = getIdFromToken(req.headers.authorization);
-    
+      let userId = getIdFromToken(req.headers.authorization);
+
+      
+      const drive = await Drive.findById(id);
+      
+      if(!drive) {
+        return res.json({ message: "Drive not found"});
+      }
+      console.log("--------")
+      
+      if(drive.author_id == userId) {
+        if(passenger_id) {
+          console.log(userId);
+
+          userId = passenger_id;
+          console.log(userId);
+        }
+      }
+      
+
+      const book = await Book.findOneAndDelete({author_id: userId, drive_id: id})
+      
+      if(!book) {
+        return res.json({ message: "Book not found"});
+      }
+      
+
+      
+
+
+
+      
+
+
+      const oldCountSeats = drive.booked_seats;
+      const bookedSeatsPerson = book.seats;
+
+      const currBookedSeats = drive.booked_seats - +book.seats;
+
       await User.updateOne({_id: userId}, { $pull: { booked_drives: id}}, {new: true});
-      await Drive.updateOne({_id: id}, { $pull: { passengers_id: userId }}, {new: true});
+      await Drive.updateOne({_id: id}, { $pull: { passengers_id: userId, book_id: book._id }, booked_seats: currBookedSeats}, {new: true});
+      
 
       return res.json({message: "unbooked"});
     } catch (error) {
@@ -235,4 +357,4 @@ class driveController {
   }
 }
 
-export default new driveController();
+export default new driveController();   

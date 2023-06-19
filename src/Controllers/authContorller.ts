@@ -11,11 +11,11 @@ import getIdFromToken from "../Helpers/getIdFromToken";
 import { JwtPayload } from "jsonwebtoken";
 
 
-const generateAccessToken = (id: string, roles: string[]) => {
-  const payload = {
-    id,
-    roles,
-  }
+const generateAccessToken = (payload: {
+  id: string,
+  roles: string[],
+  name: string
+}) => {
 
   return jwt.sign(payload, secret, {expiresIn: "24h"});
 }
@@ -73,7 +73,7 @@ class authController {
         return res.status(400).json({message: "Password is incorrect"})
       }
 
-      const token = generateAccessToken(user._id.toString(), user.roles);
+      const token = generateAccessToken({id: user._id.toString(), roles: user.roles, name: user.name});
       return res.status(200).json({token: token})
     } catch(e) {
       console.log(e);
@@ -96,7 +96,7 @@ class authController {
       const hashPassword = bcryptjs.hashSync(password, 7);
       const user = new User({phone, name, password: hashPassword, roles: [RolesEnum.ADMIN]})
       await user.save();
-      
+        
       console.log(user);
       res.json(user);
     } catch (error) {
